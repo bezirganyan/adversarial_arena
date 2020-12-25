@@ -6,6 +6,7 @@ import numpy as np
 from art.attacks import evasion
 from art.estimators.classification import PyTorchClassifier
 from art.utils import load_cifar10, to_categorical, compute_success
+import deeprobust.image.netmodels.resnet as resnet
 
 from resnet import ResNet18
 
@@ -58,7 +59,6 @@ def attack_model(model: PyTorchClassifier,
                  attack: str,
                  attacker,
                  x_test: Union[list, np.array, torch.Tensor],
-                 normalize: Callable[[Union[int, np.ndarray]], Union[int, np.ndarray]],
                  target: Union[int, str],
                  y_test: Union[list, np.array, torch.Tensor],
                  norm: int,
@@ -71,9 +71,9 @@ def attack_model(model: PyTorchClassifier,
     x_test_adv = attacker.generate(x=x_test, y=to_categorical(target_classes))
     duration = time.time() - st  # end time
 
-    predictions = model.predict(normalize(x_test_adv))
+    predictions = model.predict(x_test_adv)
     missclassification = np.sum(np.argmax(predictions, axis=1) != np.argmax(y_test, axis=1)) / len(y_test)
-    success = compute_success(model, normalize(x_test), to_categorical(target_classes), normalize(x_test_adv), targeted=True)
+    success = compute_success(model, x_test, to_categorical(target_classes), x_test_adv, targeted=True)
     save_path = f'../results/{attack}_{norm}_{epsilon}_{target}.pt'
     torch.save(x_test_adv, save_path)
     res = (attack, norm, epsilon, duration, missclassification, success, save_path, target)
@@ -94,7 +94,6 @@ def generate_adversaries(model: PyTorchClassifier,
                          attack: str,
                          x_test: Union[list, np.array, torch.Tensor],
                          y_test: Union[list, np.array, torch.Tensor],
-                         normalize: Callable[[int], int],
                          norms: Union[list, np.array, torch.Tensor],
                          epsilons: Union[list, np.array, torch.Tensor],
                          targets: Union[list, np.array] = range(10),
@@ -106,12 +105,13 @@ def generate_adversaries(model: PyTorchClassifier,
         for eps in epsilons:
             for target in targets:
                 try:
-                    attacker = uc_attacker(norm=n, estimator=model, eps=eps, targeted=True, batch_size=batch_size)
+                    attacker = uc_attacker(norm=n, estimator=model, targeted=True, batch_size=batch_size)
                 except ValueError:
-                    attacker = uc_attacker(norm=int(n), estimator=model, eps=eps, targeted=True, batch_size=batch_size)
+                    attacker = uc_attacker(norm=int(n), estimator=model, targeted=True, batch_size=batch_size)
 
+                attacker.eps = eps
                 attacker.eps_step = min(attacker.eps_step, eps / 3)
-                res = attack_model(model, attack, attacker, x_test, normalize, target, y_test, n, eps, verbose=True)
+                res = attack_model(model, attack, attacker, x_test, target, y_test, n, eps, verbose=True)
                 results.append(res)
                 torch.save(results, '../results.pt')
     return results
@@ -119,7 +119,11 @@ def generate_adversaries(model: PyTorchClassifier,
 
 if __name__ == '__main__':
     x_test, y_test, min_pixel_value, max_pixel_value, normalize, unnormalize = load_data(test_size=1000)
-    pt_model = load_model('../cifar_vanilla.pth')
+    # pt_model = load_model('../cifar_vanilla.pth')
+
+    pt_model = resnet.ResNet18().to('cuda')
+    pt_model.load_state_dict(torch.load('../CIFAR10_ResNet18_epoch_100.pt'))
+    torch.manual_seed(42)
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(pt_model.parameters(), lr=0.01)
@@ -132,14 +136,13 @@ if __name__ == '__main__':
         input_shape=(3, 32, 32),
         nb_classes=10,
     )
-
-    predictions = model.predict(normalize(x_test))
+    predictions = model.predict(x_test)
     accuracy = np.sum(np.argmax(predictions, axis=1) == np.argmax(y_test, axis=1)) / len(y_test)
     print("Accuracy on benign test examples: {}%".format(accuracy * 100))
 
     attacks = ['fgsm', 'pgd', 'auto.pgd']
     attackers = [evasion.FastGradientMethod, evasion.ProjectedGradientDescent, evasion.AutoProjectedGradientDescent]
     for attack, attacker in zip(attacks, attackers):
-        results = generate_adversaries(model, attacker, attack, x_test, y_test, normalize, [1, 2, 'inf'],
-                                       np.linspace(0.001, 0.5, 10))
+        results = generate_adversaries(model, attacker, attack, x_test, y_test, [1, 2, 'inf'],
+                                       np.linspace(0.01, 0.5, 10), targets=range(10))
 
