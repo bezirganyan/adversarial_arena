@@ -97,7 +97,7 @@ def generate_adversaries(model: PyTorchClassifier,
                          norms: Union[list, np.array, torch.Tensor],
                          epsilons: Union[list, np.array, torch.Tensor],
                          targets: Union[list, np.array] = range(10),
-                         results: tuple = None,
+                         results: list = None,
                          batch_size: Optional[int] = 64) -> list:
     if results is None:
         results: list = []
@@ -139,10 +139,10 @@ if __name__ == '__main__':
     predictions = model.predict(x_test)
     accuracy = np.sum(np.argmax(predictions, axis=1) == np.argmax(y_test, axis=1)) / len(y_test)
     print("Accuracy on benign test examples: {}%".format(accuracy * 100))
-
+    results = []
     attacks = ['fgsm', 'pgd', 'auto.pgd']
     attackers = [evasion.FastGradientMethod, evasion.ProjectedGradientDescent, evasion.AutoProjectedGradientDescent]
     for attack, attacker in zip(attacks, attackers):
         results = generate_adversaries(model, attacker, attack, x_test, y_test, [1, 2, 'inf'],
-                                       np.linspace(0.01, 0.5, 10), targets=range(10))
+                                       np.linspace(0.01, 0.5, 10), targets=range(10), results=results)
 
