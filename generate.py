@@ -68,12 +68,12 @@ def attack_model(model: PyTorchClassifier,
     target_classes = torch.tensor([target] * test_size)
     st = time.time()  # start  time
 
-    x_test_adv = attacker.generate(x=x_test, y=to_categorical(target_classes))
+    x_test_adv = attacker.generate(x=x_test, y=to_categorical(target_classes, nb_classes=10))
     duration = time.time() - st  # end time
 
     predictions = model.predict(x_test_adv)
     missclassification = np.sum(np.argmax(predictions, axis=1) != np.argmax(y_test, axis=1)) / len(y_test)
-    success = compute_success(model, x_test, to_categorical(target_classes), x_test_adv, targeted=True)
+    success = compute_success(model, x_test, to_categorical(target_classes, nb_classes=10), x_test_adv, targeted=True)
     save_path = f'../results/{attack}_{norm}_{epsilon}_{target}.pt'
     torch.save(x_test_adv, save_path)
     res = (attack, norm, epsilon, duration, missclassification, success, save_path, target)
@@ -108,9 +108,7 @@ def generate_adversaries(model: PyTorchClassifier,
                     attacker = uc_attacker(norm=n, estimator=model, targeted=True, batch_size=batch_size)
                 except ValueError:
                     attacker = uc_attacker(norm=int(n), estimator=model, targeted=True, batch_size=batch_size)
-
-                attacker.eps = eps
-                attacker.eps_step = min(attacker.eps_step, eps / 3)
+                attacker.set_params(eps=eps, eps_step=min(attacker.eps_step, eps / 3))
                 res = attack_model(model, attack, attacker, x_test, target, y_test, n, eps, verbose=True)
                 results.append(res)
                 torch.save(results, '../results.pt')
@@ -124,6 +122,7 @@ if __name__ == '__main__':
     pt_model = resnet.ResNet18().to('cuda')
     pt_model.load_state_dict(torch.load('../CIFAR10_ResNet18_epoch_100.pt'))
     torch.manual_seed(42)
+    np.random.seed(seed=42)
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(pt_model.parameters(), lr=0.01)
