@@ -1,3 +1,4 @@
+import argparse
 import time
 from typing import Union, Optional
 
@@ -37,8 +38,8 @@ def attack_model(model: PyTorchClassifier,
         predictions = model.predict(x_adv)
         missclassification += np.sum(np.argmax(predictions, axis=1) != np.argmax(y))
 
-    adv_samples = torch.cat(adv_samples, dim=0)
-    perturbations = torch.cat(perturbations, dim=0)
+    adv_samples = np.concatenate(adv_samples, axis=0)
+    perturbations = np.concatenate(perturbations, axis=0)
     missclassification /= count
     adv_path = f'results/{attack}_{norm}_{epsilon}.pt'
     prt_path = f'results/{attack}_{norm}_{epsilon}_pert.pt'
@@ -79,18 +80,24 @@ def generate_adversaries(model: PyTorchClassifier,
 
 
 if __name__ == '__main__':
-    # TODO - Need to get these from a CLI
-    device = 'cpu'
-    torch.manual_seed(42)
-    np.random.seed(seed=42)
-    batch_size = 64
-    path = 'data/imagenette2-320/train'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, default='data/imagenette2-320/train',
+                        help='Path to source image data in ImageNet format')
+    parser.add_argument('--gpu', action='store_true', help='Use GPU for crafting (if not provided CPU will be used)')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed to use (default = 42)')
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch Size (default = 64)')
+
+    args = parser.parse_args()
+    device = 'cuda' if args.gpu else 'cpu'
+    torch.manual_seed(args.seed)
+    np.random.seed(seed=args.seed)
+    batch_size = args.batch_size
 
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225])
     transforms = T.Compose([T.Resize(256), T.CenterCrop(224), normalize])
 
-    dataset = ImageNetteDataset(path, labels_file='map_clsloc.txt', transforms=transforms)
+    dataset = ImageNetteDataset(args.data_path, labels_file='map_clsloc.txt', transforms=transforms)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, shuffle=False)
 
     model = models.vgg16(pretrained=True)
@@ -105,21 +112,21 @@ if __name__ == '__main__':
         optimizer=optimizer,
         input_shape=(3, 224, 224),
         nb_classes=1000,
-        device_type='gpu'
+        device_type='gpu' if args.gpu else 'cpu'
     )
 
     accurate = 0
     count = 0
     for x, y in tqdm(dataloader):
-        predictions = model.forward(x)
-        accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y).item()
+        predictions = model.forward(x.to(device))
+        accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y.to(device)).item()
         count += x.shape[0]
 
     accuracy = accurate / count
     print("Accuracy on benign test examples: {}%".format(accuracy * 100))
     results = []
     attacks = ['pgd']
-    attackers = [evasion.FastGradientMethod, evasion.ProjectedGradientDescent, evasion.AutoProjectedGradientDescent]
+    attackers = [evasion.ProjectedGradientDescent]
     for attack, attacker in zip(attacks, attackers):
         results = generate_adversaries(pt_model, attacker, attack, dataloader, ['inf'],
                                        np.linspace(0.01, 0.5, 10), results=results)
