@@ -6,8 +6,6 @@ import numpy as np
 import torch
 import torchvision.models as models
 import torchvision.transforms as T
-from art.attacks import evasion
-from art.estimators.classification import PyTorchClassifier
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
@@ -38,8 +36,8 @@ def attack_model(attack: str,
         perturbation = x_adv - x
         perturbations.append(perturbation.detach().cpu())
         count += x.shape[0]
-        predictions = model.predict(x_adv.detach().cpu())
-        missclassification += np.sum(np.argmax(predictions, axis=1) != np.argmax(y))
+        predictions = model.forward(x)
+        missclassification += torch.sum(torch.argmax(predictions, dim=1) != y).item()
 
     adv_samples = torch.cat(adv_samples, dim=1)
     perturbations = torch.cat(perturbations, dim=1)
@@ -100,15 +98,15 @@ if __name__ == '__main__':
     model = models.vgg16(pretrained=True).to(device)
     model.eval()
 
-    # accurate = 0
-    # count = 0
-    # for x, y in tqdm(dataloader):
-    #     predictions = model.forward(x.to(device))
-    #     accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y.to(device)).item()
-    #     count += x.shape[0]
-    #
-    # accuracy = accurate / count
-    # print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+    accurate = 0
+    count = 0
+    for x, y in tqdm(dataloader):
+        predictions = model.forward(x.to(device))
+        accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y.to(device)).item()
+        count += x.shape[0]
+
+    accuracy = accurate / count
+    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
     results = []
     attacks = ['pgd']
     attackers = [lambda x, eps, norm: projected_gradient_descent(model, x, eps, eps/3, 100, norm)]
