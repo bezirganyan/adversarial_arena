@@ -10,17 +10,18 @@ from art.attacks import evasion
 from art.estimators.classification import PyTorchClassifier
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
+from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
 
 from utils import ImageNetteDataset
 
 
-def attack_model(model: PyTorchClassifier,
-                 attack: str,
+def attack_model(attack: str,
                  attacker,
                  dataloader: torch.utils.data.DataLoader,
                  norm: int,
                  epsilon: int,
-                 verbose: Optional[bool] = True) -> tuple:
+                 verbose: Optional[bool] = True,
+                 device: str = 'cuda') -> tuple:
 
     duration = 0
     count = 0
@@ -28,18 +29,20 @@ def attack_model(model: PyTorchClassifier,
     adv_samples = []
     perturbations = []
     for x, y in tqdm(dataloader, leave=False):
+        x = x.to(device)
+        y = y.to(device)
         st = time.time()  # start  time
-        x_adv = attacker.generate(x=x.detach().cpu().numpy())
+        x_adv = attacker(x, epsilon, norm)
         duration += time.time() - st  # end time
         adv_samples.append(x_adv)
-        perturbation = x_adv - x.detach().cpu().numpy()
-        perturbations.append(perturbation)
+        perturbation = x_adv - x
+        perturbations.append(perturbation.detach().cpu())
         count += x.shape[0]
-        predictions = model.predict(x_adv)
+        predictions = model.predict(x_adv.detach().cpu())
         missclassification += np.sum(np.argmax(predictions, axis=1) != np.argmax(y))
 
-    adv_samples = np.concatenate(adv_samples, axis=0)
-    perturbations = np.concatenate(perturbations, axis=0)
+    adv_samples = torch.cat(adv_samples, dim=1)
+    perturbations = torch.cat(perturbations, dim=1)
     missclassification /= count
     adv_path = f'results/{attack}_{norm}_{epsilon}.pt'
     prt_path = f'results/{attack}_{norm}_{epsilon}_pert.pt'
@@ -56,24 +59,18 @@ def attack_model(model: PyTorchClassifier,
     return res
 
 
-def generate_adversaries(model: PyTorchClassifier,
-                         uc_attacker,
+def generate_adversaries(attacker,
                          attack: str,
                          dataloader: DataLoader,
                          norms: Union[list, np.array, torch.Tensor],
                          epsilons: Union[list, np.array, torch.Tensor],
                          results: list = None,
-                         batch_size: Optional[int] = 64) -> list:
+                         device: str = 'cuda') -> list:
     if results is None:
         results: list = []
     for n in tqdm(norms):
         for eps in tqdm(epsilons, leave=False):
-            try:
-                attacker = uc_attacker(norm=n, estimator=model, batch_size=batch_size)
-            except ValueError:
-                attacker = uc_attacker(norm=int(n), estimator=model, batch_size=batch_size)
-            attacker.set_params(eps=eps, eps_step=min(attacker.eps_step, eps / 3))
-            res = attack_model(model, attack, attacker, dataloader, n, eps, verbose=True)
+            res = attack_model(attack, attacker, dataloader, n, eps, verbose=True, device=device)
             results.append(res)
             torch.save(results, '../results.pt')
     return results
@@ -100,35 +97,23 @@ if __name__ == '__main__':
     dataset = ImageNetteDataset(args.data_path, labels_file='map_clsloc.txt', transforms=transforms)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, shuffle=False)
 
-    model = models.vgg16(pretrained=True)
+    model = models.vgg16(pretrained=True).to(device)
     model.eval()
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-    pt_model = PyTorchClassifier(
-        model=model,
-        loss=criterion,
-        optimizer=optimizer,
-        input_shape=(3, 224, 224),
-        nb_classes=1000,
-        device_type='gpu' if args.gpu else 'cpu'
-    )
-
-    accurate = 0
-    count = 0
-    for x, y in tqdm(dataloader):
-        predictions = model.forward(x.to(device))
-        accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y.to(device)).item()
-        count += x.shape[0]
-
-    accuracy = accurate / count
-    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+    # accurate = 0
+    # count = 0
+    # for x, y in tqdm(dataloader):
+    #     predictions = model.forward(x.to(device))
+    #     accurate += torch.sum(torch.argmax(torch.tensor(predictions), dim=1) == y.to(device)).item()
+    #     count += x.shape[0]
+    #
+    # accuracy = accurate / count
+    # print("Accuracy on benign test examples: {}%".format(accuracy * 100))
     results = []
     attacks = ['pgd']
-    attackers = [evasion.ProjectedGradientDescent]
+    attackers = [lambda x, eps, norm: projected_gradient_descent(model, x, eps, eps/3, 100, norm)]
     for attack, attacker in zip(attacks, attackers):
-        results = generate_adversaries(pt_model, attacker, attack, dataloader, ['inf'],
-                                       np.linspace(0.01, 0.5, 10), results=results)
+        results = generate_adversaries(attacker, attack, dataloader, [np.inf],
+                                       np.linspace(0.01, 0.5, 10), results=results, device=device)
 
 
