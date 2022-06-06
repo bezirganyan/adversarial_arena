@@ -1,5 +1,6 @@
 import os
 
+from torch import nn
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import T_co
 import pandas as pd
@@ -36,3 +37,8 @@ class ImageNetteDataset(Dataset):
         cat_id = self.file_labels.iloc[index, 1]
 
         return image, cat_id
+
+
+class MyDataParallel(nn.DataParallel):
+    def __getattr__(self, name):
+        return getattr(self.module, name)
