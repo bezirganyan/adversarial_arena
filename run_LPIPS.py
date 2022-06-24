@@ -15,7 +15,7 @@ def normalize(x):
     return 2 * (x - x.min()) / (x.max() - x.min()) - 1
 
 def evaluate(rank, files, res_path, scores_path, k_list, p_count):
-    results = {'eps': [], 'k':[], 'device': [], 'score': [], 'score_pert': [], 'miss_pert': [], 'score_gauss': [], 'miss_gauss': [], 'miss': []}
+    results = {'eps': [], 'k':[], 'device': [], 'score': [], 'score_pert': [], 'miss_pert': [], 'miss': []}
 
     files = [f for f in files if int(f.split('_')[-1].replace(".pt", "")) == rank]
     for f in tqdm(files):
@@ -58,22 +58,9 @@ def evaluate(rank, files, res_path, scores_path, k_list, p_count):
                     results['score_pert'].extend(list(lpips_score(x, pert_images).detach().cpu().numpy().reshape(-1)))
                     results['miss_pert'].extend(miss_pert)
 
-                for _ in tqdm(range(p_count), leave=False):
-                    noise = torch.normal(mean=0., std=float(fparam[2]), size=x.shape[1:])
-                    noise = torch.clip(noise, -float(fparam[2]), float(fparam[2])).cuda(rank)
-                    pert_images = x + noise
-
-                    pred_adv = model.forward(pert_images)
-                    miss_gauss = list(
-                        (torch.argmax(predictions, dim=1) != torch.argmax(pred_adv, dim=1)).detach().cpu().numpy())
-                    results['score_gauss'].extend(list(lpips_score(x, pert_images).detach().cpu().numpy().reshape(-1)))
-                    results['miss_gauss'].extend(miss_gauss)
-
         print(f'Eps: {fparam[2]}')
         print(f'scores_mean {np.mean(results["score"])}')
         print(f'pt_scores_mean {np.mean(results["score_pert"])}')
-        print(f'rn_scores_mean {np.mean(results["score_gauss"])}')
-
         pd.DataFrame.from_dict(results).to_csv(os.path.join(scores_path, f'results_{rank}.csv'))
 
 
