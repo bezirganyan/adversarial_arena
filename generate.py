@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as T
+from art.attacks import evasion
+from art.estimators.classification import PyTorchClassifier
 from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 from tqdm.auto import tqdm
@@ -32,22 +34,22 @@ def attack_model(model,
     adv_samples = []
     perturbations = []
     for x, y in tqdm(dataloader, leave=False):
-        x = x.cuda(non_blocking=True)
+        # x = x.cuda(non_blocking=True)
         y = y.cuda(non_blocking=True)
         st = time.time()  # start  time
-        x_adv = attacker(x, epsilon, norm)
+        x_adv = torch.tensor(attacker.generate(x.detach().numpy())).cuda(non_blocking=True)
         duration += int(time.time() - st)  # end time
         adv_samples.append(x_adv.detach().cpu())
         perturbation = x_adv - x
         perturbations.append(perturbation.detach().cpu())
         count += x.shape[0]
-        predictions = model.forward(x_adv)
+        predictions = model._model.forward(x_adv)
         missclassification += torch.sum(torch.argmax(predictions, dim=1) != y).item()
 
     adv_samples = torch.cat(adv_samples, dim=0)
     perturbations = torch.cat(perturbations, dim=0)
-    adv_path = f'results/{attack}_{norm}_{epsilon:.3f}_{device}.pt'
-    prt_path = f'results/{attack}_{norm}_{epsilon:.3f}_{device}_prt.pt'
+    adv_path = f'results_art/{attack}_{norm}_{epsilon:.3f}_{device}.pt'
+    prt_path = f'results_art/{attack}_{norm}_{epsilon:.3f}_{device}_prt.pt'
     torch.save(adv_samples, adv_path)
     torch.save(perturbations, prt_path)
 
@@ -81,14 +83,15 @@ def generate_adversaries(model,
                          device: int = 0) -> list:
     if results is None:
         results: list = []
-    dtl_path = f'results/{attack}_{device}_dtl.pt'
+    dtl_path = f'results_art/{attack}_{device}_dtl.pt'
     torch.save(dataloader, dtl_path)
     for n in tqdm(norms):
         for eps in tqdm(epsilons, leave=False):
+            attacker = evasion.wasserstein.Wasserstein(model, eps=eps, eps_step=eps / 3, regularization=10000, )
             res = attack_model(model, attack, attacker, dataloader, n, eps, verbose=True, device=device)
             if res:
                 results.append(res)
-                torch.save(results, '../results.pt')
+                torch.save(results, '../results_art.pt')
 
     return results
 
@@ -136,10 +139,20 @@ def craft(device, args, dataset):
         accuracy = accurate / count
         print("Accuracy on benign test examples: {}%".format(accuracy * 100))
     results = []
-    attacks = ['pgd']
-    attackers = [lambda x, eps, norm: projected_gradient_descent(model, x, eps, eps / 3, 100, norm)]
-    for attack, attacker in zip(attacks, attackers):
-        results = generate_adversaries(model, attacker, attack, dataloader, [np.inf],
+    attacks = ['wasserstein']
+
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    pt_model = PyTorchClassifier(
+        model=model,
+        loss=criterion,
+        optimizer=optimizer,
+        input_shape=x.shape[0],
+        nb_classes=1000,
+    )
+    for attack in attacks:
+        results = generate_adversaries(pt_model, None, attack, dataloader, [np.inf],
                                        np.linspace(0.05, 1, 15), results=results, device=device)
 
 
@@ -158,7 +171,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
     os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '8888'
+    os.environ['MASTER_PORT'] = '8995'
 
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225])
