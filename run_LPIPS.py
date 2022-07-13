@@ -13,8 +13,10 @@ import torch.multiprocessing as mp
 def normalize(x):
     return 2 * (x - x.min()) / (x.max() - x.min()) - 1
 
-def evaluate(rank, files, res_path, scores_path, p_count):
-    results = {'eps': [], 'k':[], 'device': [], 'score': [], 'score_pert': [], 'miss_pert': [], 'miss': []}
+def evaluate(rank: int, files: list, distance_network: str,
+             target_network: str, res_path: str, scores_path: str, p_count: int) -> None:
+    results = {'eps': [], 'device': [], 'score': [], 'score_pert': [], 'miss_pert': [], 'miss': []}
+    network_dict = {'vgg': models.vgg16, 'alex': models.alexnet, 'squeeze': models.squeezenet1_1}
 
     files = [f for f in files if int(f.split('_')[-1].replace(".pt", "")) == rank]
     for f in tqdm(files):
@@ -26,9 +28,9 @@ def evaluate(rank, files, res_path, scores_path, p_count):
         adv = torch.load(os.path.join(res_path, f))
         bs = dataloader.batch_size
 
-        lpips = NoTrainLpips(net='alex', verbose=False).cuda(rank)
+        lpips = NoTrainLpips(net=distance_network, verbose=False).cuda(rank)
         lpips_score = lambda x, y: lpips(normalize(x.cuda(rank)), normalize(y.cuda(rank)))
-        model = models.alexnet(pretrained=True).cuda(rank)
+        model = network_dict[target_network](pretrained=True).cuda(rank)
         model.eval()
 
         for i, (x, y) in tqdm(enumerate(dataloader), leave=False):
@@ -66,9 +68,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--res_path', type=str, default='results')
     parser.add_argument('--scores_path', type=str, default='scores')
-    parser.add_argument('--eps_start', type=float, default=0.05)
-    parser.add_argument('--eps_end', type=float, default=1.0)
-    parser.add_argument('--eps_count', type=int, default=15)
+    parser.add_argument('--distance_network', type=str, default='vgg')
+    parser.add_argument('--target_network', type=str, default='vgg')
 
     args = parser.parse_args()
 
@@ -79,4 +80,5 @@ if __name__ == '__main__':
     p_count = 10 #10
     nprocs = 8
 
-    mp.spawn(fn=evaluate, args=(file_list, args.res_path, args.scores_path, p_count), nprocs=nprocs, )
+    mp.spawn(fn=evaluate, args=(file_list, args.distance_network, args.target_network, args.res_path,
+                                args.scores_path, p_count), nprocs=nprocs)
