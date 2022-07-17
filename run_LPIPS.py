@@ -68,9 +68,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--res_path', type=str, default='results')
     parser.add_argument('--scores_path', type=str, default='scores')
-    parser.add_argument('--eps_start', type=float, default=0.05)
-    parser.add_argument('--eps_end', type=float, default=1.0)
-    parser.add_argument('--eps_count', type=int, default=15)
+    parser.add_argument('--distance_network', type=str, default='vgg')
+    parser.add_argument('--target_network', type=str, default='vgg')
 
     args = parser.parse_args()
 
@@ -81,4 +80,5 @@ if __name__ == '__main__':
     p_count = 10 #10
     nprocs = 8
 
-    mp.spawn(fn=evaluate, args=(file_list, args.res_path, args.scores_path, p_count), nprocs=nprocs, )
+    mp.spawn(fn=evaluate, args=(file_list, args.distance_network, args.target_network, args.res_path,
+                                args.scores_path, p_count), nprocs=nprocs)
