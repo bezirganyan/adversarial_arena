@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate "adversarial-arena"
+
 adversarialfolder=$1
 folderprefix=${2:-scores}
 
