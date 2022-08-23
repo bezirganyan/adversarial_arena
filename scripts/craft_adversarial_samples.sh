@@ -5,6 +5,9 @@ set -o errexit
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate "adversarial-arena"
 
+echo "cleaning data"
+python clean_data.py
+
 echo "Generating adversarial samples using PGD"
 mkdir -p "results"
 python generate.py
