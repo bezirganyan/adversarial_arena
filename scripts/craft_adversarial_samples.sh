@@ -10,7 +10,7 @@ python clean_data.py
 
 echo "Generating adversarial samples using PGD"
 mkdir -p "results"
-python generate.py
+python generate.py --batch_size 64 -g 8
 
 echo "Generating adversarial samples using Wasserstein Frank-Wolfe + Dual LMO"
 mkdir -p "results_wass"

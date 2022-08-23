@@ -70,15 +70,16 @@ if __name__ == '__main__':
     parser.add_argument('--scores_path', type=str, default='scores')
     parser.add_argument('--distance_network', type=str, default='vgg')
     parser.add_argument('--target_network', type=str, default='vgg')
+    parser.add_argument('--p_count', type=int, default=10)
+    parser.add_argument('--nprocs', type=int, default=8)
 
     args = parser.parse_args()
 
     file_list = os.listdir(args.res_path)
     file_list = [f for f in file_list if not f.endswith('dtl.pt') and not f.endswith('prt.pt')]
 
-
-    p_count = 10 #10
-    nprocs = 8
+    p_count = args.p_count
+    nprocs = args.nprocs
 
     mp.spawn(fn=evaluate, args=(file_list, args.distance_network, args.target_network, args.res_path,
                                 args.scores_path, p_count), nprocs=nprocs)
