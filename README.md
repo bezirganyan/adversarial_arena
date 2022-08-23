@@ -5,21 +5,16 @@ Note that for wasserstein attack, the code is implemented in [this](https://gith
 
 ## Installation
 
-Install miniconda/anaconda, and create an environment with:
+Installation of the project (together with supporting repositories) is in `/scripts/setup_arena.sh`. 
+To install simply run it as
 
 ```
-conda create -n adv_arena39 python=3.9.7 anaconda
-conda activate adv_arena39
-pip install -r adversarial_arena/requirements.txt
+./scripts/setup_arena.sh
 ```
 
-## Data
+The script
+* Downloads necessary repositories for all experiments
+* Downloads and unpacks the ImageNette dataset
+* Creates a conda environment for the experiments
+* Installs the necessary dependencies for the experiments
 
-We use ImageNette for crafting adversarial samples. You can get the dataset with 
-
-```
-mkdir data
-cd data
-wget https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-320.tgz
-tar -xf imagenette2-320.tgz
-```
