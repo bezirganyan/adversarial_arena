@@ -11,6 +11,9 @@ wget https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-320.tgz data/imagene
 (cd data && tar -xzf imagenette2-320.tgz)
 rm data/imagenette2-320.tgz
 
+(cd ../fast-wasserstein-adversarial && ln -s ../adversarial_arena/data/ data)
+(cd ../improved_wasserstein && ln -s ../adversarial_arena/data/ data)
+
 conda create -n "adversarial-arena" python=3.9.7 -y
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate "adversarial-arena"

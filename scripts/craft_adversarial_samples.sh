@@ -14,9 +14,9 @@ python generate.py --batch_size 64 -g 8
 
 echo "Generating adversarial samples using Wasserstein Frank-Wolfe + Dual LMO"
 mkdir -p "results_wass"
-(cd ../fast_wasserstein_adversarial && python generate.py)
-(cd ../fast_wasserstein_adversarial && python generate.py --eps_start=0.0005 --eps_end=0.05 --eps_count=10)
-mv ../fast_wasserstein_adversarial/results_wass/ .
+(cd ../fast-wasserstein-adversarial && python generate.py)
+(cd ../fast-wasserstein-adversarial && python generate.py --eps_start=0.0005 --eps_end=0.05 --eps_count=10)
+mv ../fast-wasserstein-adversarial/results_wass/ .
 
 echo "Generating adversarial samples using Improved Wasserstein"
 mkdir -p "results_iwass"
