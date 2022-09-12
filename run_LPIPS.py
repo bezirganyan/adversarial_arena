@@ -76,7 +76,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     file_list = os.listdir(args.res_path)
-    file_list = [f for f in file_list if not f.endswith('dtl.pt') and not f.endswith('prt.pt')]
+    file_list = [f for f in file_list if not f.endswith('dtl.pt') and not f.endswith('prt.pt') and not f.endswith('dur.pt')]
 
     p_count = args.p_count
     nprocs = args.nprocs
