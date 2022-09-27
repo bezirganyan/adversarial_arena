@@ -1,0 +1,1 @@
+web: bash scripts/setup_demo.sh && streamlit run demo/main.py
