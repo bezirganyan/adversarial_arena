@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import seaborn as sns
 from matplotlib import pyplot as plt
+import matplotlib.image as mpimg
 
 
 def load_results(results_path):
@@ -50,6 +51,8 @@ def plot_wass_comparisons(wass_df: pd.DataFrame, iwass_df: pd.DataFrame, metric=
     return fig
 
 if __name__ == '__main__':
+    results_path = './png/' # Streamlit does not support -- arguments, TODO - find another way to pass this
+
     st.title(' Summary of Perceptual Similarity metrics for adversarial attacks')
     st.header('1. Transferability of adversarial attacks on LPIPS metric')
     st.write("""Our hypothesis is that since LPIPS works on top of convolutional networks desinged for image
@@ -91,39 +94,29 @@ if __name__ == '__main__':
     attack = st.selectbox('Attack Type', ['pgd', 'wass', 'iwass'])
     target_net = st.selectbox('Target Network', ['vgg', 'alex', 'squeeze'])
     distance_net = st.selectbox('Distance Network', ['vgg', 'alex', 'squeeze']  if target_net == 'vgg' else ['alex', 'squeeze'])
-    results_path = f'{attack}_scores_{target_net}_{distance_net}'
-    results = load_results(results_path)
-    # eps_range = st.slider('Max eps', 0., 1., (0.1, 0.2), step=0.0001)
-    # eps_in_range = eps[np.bitwise_and(eps_range[0] <= eps, eps < eps_range[1])]
-    eps = np.sort(results.eps.unique())
+    missclassification_rates = pd.read_csv(f'./missclassification_rates.csv')
+    res_filtered = missclassification_rates[
+        (missclassification_rates['attack'] == attack) &
+        (missclassification_rates['target_net'] == target_net) &
+        (missclassification_rates['distance_net'] == distance_net)]
+    eps = np.sort(res_filtered.eps.unique())
     sel_eps = float(st.selectbox('Select epsilon', eps))
-    res_in_eps = results[(results['eps'] >= (sel_eps - 1e-6)) & (results['eps'] <= (sel_eps + 1e-6))]
-    st.write(f"Missclassification rate: {res_in_eps.miss.sum() / res_in_eps.miss.shape[0]}")
-    st.write(f"Shuffled perturbation Missclassification rate: {res_in_eps.miss_pert.sum() / res_in_eps.miss_pert.shape[0]}")
-    plot = plot_lpips_distributions(results, sel_eps - 1e-6, sel_eps + 1e-6)
-    st.pyplot(plot)
-    buffer = io.StringIO()
-    plot.savefig(buffer, format='eps')
+    res_in_eps = res_filtered[res_filtered['eps'] == sel_eps]
+    st.write(f"Missclassification rate: {   res_in_eps.adv_miss_rate.mean()}")
+    st.write(f"Shuffled perturbation Missclassification rate: {res_in_eps.prt_miss_rate.mean()}")
+    fig, ax = plt.subplots()
+    img = mpimg.imread(f'{results_path}/{attack}_{target_net}_{distance_net}_{sel_eps:.3f}.png')
+    plot = ax.imshow(img, interpolation='nearest')
+    ax.axis('off')
+    st.pyplot(fig)
 
-    st.download_button(
-        label='Download EPS',
-        data=buffer.getvalue(),
-        file_name=f'distributions_{attack}_{target_net}_{distance_net}.eps'
-    )
 
     st.header('2. Comparing Fast-Wasserstein with Improved Wasserstein')
-    wass_df = load_results('comparison_wass')
-    iwass_df = load_results('comparison_iwass')
     metric = option = st.selectbox(
      'Metric',
      ('missclassification', 'duration'))
-    plot_c = plot_wass_comparisons(wass_df, iwass_df, metric=metric)
-    st.pyplot(plot_c)
-    buffer_c = io.StringIO()
-    plot_c.savefig(buffer_c, format='eps')
-
-    st.download_button(
-        label='Download EPS',
-        data=buffer_c.getvalue(),
-        file_name=f'{metric}.eps'
-    )
+    fig, ax = plt.subplots()
+    img = mpimg.imread(f'{results_path}/comparison_{metric}.png')
+    ax.imshow(img, interpolation='nearest')
+    ax.axis('off')
+    st.pyplot(fig)

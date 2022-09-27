@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from tqdm import tqdm
+import scipy.stats as st
 
 
 def load_results(results_path):
@@ -21,16 +22,16 @@ def load_results(results_path):
         results = pd.concat([results, t])
     return results
 
-def compute_sensitivity(data):
-    return ((data.score - data.score_pert) / data.score).mean()
+def compute_distance(data):
+    return st.wasserstein_distance(data['score'], data['score_pert'])
 
 def plot_lpips_distributions(df: pd.DataFrame, min_eps: float = 0.0, max_eps : float = 1.0) -> None:
     if df is None:
         return None
     fig, ax = plt.subplots(figsize=(10, 6))
     filtered = df[df['miss'] & ~ df['miss_pert'] & (df['eps'] < max_eps) & (df['eps'] > min_eps)]
-    sensitivity = compute_sensitivity(filtered)
-    sns.histplot(filtered.loc[:, ['score', 'score_pert']], kde=True, stat='probability', common_norm=True, ax=ax, alpha=0.6).set(title=f'Sensitivity: {sensitivity}')
+    distance = compute_distance(filtered)
+    sns.histplot(filtered.loc[:, ['score', 'score_pert']], kde=True, stat='probability', common_norm=True, ax=ax, alpha=0.6).set(title=f'Wasserstein Distance: {distance:.3f}')
     ax.set_xlabel('LPIPS score')
     ax.legend(['Perturbed Images', 'Adversarial Images'])
     return fig
@@ -61,6 +62,8 @@ if __name__ == '__main__':
     for fm in args.output_formats.split(','):
         Path(f'{args.output_dir}/{fm}/').mkdir(parents=True, exist_ok=True)
 
+    missclasssification_rates = ['attack,target_net,distance_net,eps,adv_miss_rate,prt_miss_rate']
+
     for attack in tqdm(['pgd', 'wass', 'iwass']):
         for target_net in ['vgg', 'alex', 'squeeze']:
             for distance_net in ['vgg', 'alex', 'squeeze']:
@@ -77,6 +80,13 @@ if __name__ == '__main__':
                     plot = plot_lpips_distributions(results, sel_eps - 1e-6, sel_eps + 1e-6)
                     for fm in args.output_formats.split(','):
                         plot.savefig(f'{args.output_dir}/{fm}/{attack}_{target_net}_{distance_net}_{sel_eps:.3f}.{fm}', dpi=300, format=fm)
+
+                    adv_miss_rate =  res_in_eps.miss.sum() / res_in_eps.miss.shape[0]
+                    prt_miss_rate = res_in_eps.miss_pert.sum() / res_in_eps.miss_pert.shape[0]
+                    missclasssification_rates.append(f'{attack},{target_net},{distance_net},{sel_eps:.3f},{adv_miss_rate:.3f},{prt_miss_rate:.3f}')
+
+    with open(f'{args.output_dir}/missclassification_rates.csv', 'w') as f:
+        f.write('\n'.join(missclasssification_rates))
     wass_df = load_results(f'{args.results_dir}/comparison_wass')
     iwass_df = load_results(f'{args.results_dir}/comparison_iwass')
     for metric in ['missclassification', 'duration']:
